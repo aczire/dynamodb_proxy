@@ -1,0 +1,237 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+
+Description: Feedback Store; A hypothetical example to test direct proxy to Dynamodb table from api gateway.
+Metadata:
+  cfn-lint:
+    config:
+      ignore_checks:
+        # Not useful at all.
+        - I1022
+Parameters:
+  Environment:
+    Type: String
+    Description: Current environment
+    Default: "dev"
+Resources:
+  EventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: feedback_events
+      AttributeDefinitions:
+        - AttributeName: UserID
+          AttributeType: S
+        - AttributeName: TimeUTC
+          AttributeType: S
+      KeySchema:
+        - AttributeName: UserID
+          KeyType: HASH
+        - AttributeName: TimeUTC
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+      Tags:
+        - Key: "Feedbacks"
+          Value: "true"
+  ApiGatewayDynamoRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "apigateway.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Policies:
+        - PolicyName: "ApiGatewayDynamoRolePolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "dynamodb:DescribeTable"
+                  - "dynamodb:BatchWriteItem"
+                  - "dynamodb:PutItem"
+                  - "dynamodb:Query"
+                  - "dynamodb:UpdateItem"
+                Resource:
+                  - !GetAtt EventsTable.Arn
+              - Effect: "Allow"
+                Action:
+                  - "dynamodb:ListTables"
+                Resource: "*"
+  ApiGatewayApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      DefinitionBody:
+        swagger: 2.0
+        info:
+          title: !Sub "${AWS::StackName}-backend-api"
+          version: 2021-03-21T22:37:24Z
+        basePath: /prod
+        schemes:
+          - https
+        paths:
+          /feedback:
+            post:
+              summary: Creates a new feedback
+              description: |
+                Creates a new feedback object in the datastore
+              consumes:
+                - application/json
+              produces:
+                - application/json
+              parameters:
+                - name: NewFeedback
+                  in: body
+                  description: New feedback details.
+                  schema:
+                    $ref: "#/definitions/Feedbacks"
+              tags:
+                - Feedback Store
+              x-amazon-apigateway-integration:
+                type: aws
+                uri: !Sub arn:aws:apigateway:${AWS::Region}:dynamodb:action/BatchWriteItem
+                credentials: !GetAtt ApiGatewayDynamoRole.Arn
+                httpMethod: POST
+                passthroughBehavior: when_no_match
+                requestTemplates:
+                  application/json: !Sub
+                    - |
+                      #set($inputRoot = $input.path('$'))
+                      {
+                        "RequestItems": {
+                          "${tableName}": [
+                            #foreach($event in $inputRoot.event)
+                              {
+                                "PutRequest": {
+                                  "Item": {
+                                    "UserID" : { "S": "$event.userid" },
+                                    "TimeUTC" : { "S": "$event.time" },
+                                    "Lat": { "S": "$event.lat" },
+                                    "Lng": { "S": "$event.lng" },
+                                    "UUID" : { "S": "$event.uuid"},
+                                    "Sensor" : { "S": "$event.sensor_name" },
+                                    "Reading" : { "S": "$event.reading_value" },
+                                    "Active" : { "S": "$event.is_active" }
+                                  }
+                                }
+                              }#if($foreach.hasNext),#end
+                            #end
+                          ]
+                        },
+                        "ReturnConsumedCapacity": "INDEXES",
+                        "ReturnItemCollectionMetrics": "SIZE"
+                      }
+                    - {
+                    tableName: !Ref EventsTable
+                    }
+                responses:
+                  "default":
+                    statusCode: "200"
+                    SelectionPattern: "2\\d{2}"
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Methods: "'OPTIONS,POST'"
+                      method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                  "BAD.*":
+                    statusCode: "400"
+                    SelectionPattern: "4\\d{2}"
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Methods: "'OPTIONS,POST'"
+                      method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                  "INT.*":
+                    statusCode: "500"
+                    SelectionPattern: "5\\d{2}"
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Methods: "'OPTIONS,POST'"
+                      method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+              responses:
+                "200":
+                  description: The unique identifier of the new feedback
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: "string"
+                    Access-Control-Allow-Methods:
+                      type: string
+                    Access-Control-Allow-Headers:
+                      type: string
+                  schema:
+                    $ref: "#/definitions/NewFeedbackResponse"
+                "400":
+                  description: Bad request
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: "string"
+                    Access-Control-Allow-Methods:
+                      type: string
+                    Access-Control-Allow-Headers:
+                      type: string
+                  schema:
+                    $ref: "#/definitions/Error"
+                "500":
+                  description: Internal error
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: "string"
+                    Access-Control-Allow-Methods:
+                      type: string
+                    Access-Control-Allow-Headers:
+                      type: string
+                  schema:
+                    $ref: "#/definitions/Error"
+        definitions:
+          Empty:
+            type: object
+            title: Empty Schema
+          Feedbacks:
+            type: array
+            items:
+              $ref: FeedbackItem
+          FeedbackItem:
+            properties:
+              userid:
+                type: string
+                description: UserID of the author
+              time:
+                type: string
+                description: Feedback time
+              lat:
+                type: string
+                description: Latitude
+              lng:
+                type: string
+                description: Longitude
+              uuid:
+                type: string
+                description: Globaly unique id for the feedback
+              sensor_name:
+                type: string
+                description: Device the feedback coming from
+              reading_value:
+                type: string
+                description: Current reading
+              is_active:
+                type: string
+                description: Device status
+          NewFeedbackResponse:
+            properties:
+              feedbackId:
+                type: string
+                description: The generated unique identifier for the new feedback
+          Error:
+            properties:
+              code:
+                type: integer
+                format: int32
+              message:
+                type: string
+              fields:
+                type: string
+
+      StageName: prod
+      Variables:
+        StageVariableName: "TestAPI"
