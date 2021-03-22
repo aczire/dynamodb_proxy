@@ -95,7 +95,7 @@ Resources:
                 uri: !Sub arn:aws:apigateway:${AWS::Region}:dynamodb:action/BatchWriteItem
                 credentials: !GetAtt ApiGatewayDynamoRole.Arn
                 httpMethod: POST
-                passthroughBehavior: when_no_match
+                passthroughBehavior: never
                 requestTemplates:
                   application/json: !Sub
                     - |
