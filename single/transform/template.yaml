@@ -102,6 +102,12 @@ Resources:
                       #set($inputRoot = $input.path('$'))
                       {
                         "TableName": "${tableName}",
+                        "ConditionExpression": "attribute_not_exists(TimeUTC) OR TimeUTC > :sk",
+                        "ExpressionAttributeValues": {
+                          ":sk":{
+                            "S": "$input.path('$.time')"
+                          }
+                        },
                         "Item": {
                           "UserID" : { "S": "$input.path('$.userid')" },
                           "TimeUTC" : { "S": "$input.path('$.time')" },
