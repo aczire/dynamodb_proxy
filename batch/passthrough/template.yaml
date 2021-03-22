@@ -97,21 +97,21 @@ Resources:
                 httpMethod: POST
                 passthroughBehavior: when_no_match
                 responses:
-                  "default":
+                  "2\\d{2}":
                     statusCode: "200"
                     SelectionPattern: "2\\d{2}"
                     responseParameters:
                       method.response.header.Access-Control-Allow-Methods: "'OPTIONS,POST'"
                       method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
                       method.response.header.Access-Control-Allow-Origin: "'*'"
-                  "BAD.*":
+                  "4\\d{2}":
                     statusCode: "400"
                     SelectionPattern: "4\\d{2}"
                     responseParameters:
                       method.response.header.Access-Control-Allow-Methods: "'OPTIONS,POST'"
                       method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
                       method.response.header.Access-Control-Allow-Origin: "'*'"
-                  "INT.*":
+                  "5\\d{2}":
                     statusCode: "500"
                     SelectionPattern: "5\\d{2}"
                     responseParameters:
