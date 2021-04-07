@@ -96,6 +96,25 @@ Resources:
                 credentials: !GetAtt ApiGatewayDynamoRole.Arn
                 httpMethod: POST
                 passthroughBehavior: when_no_match
+                requestTemplates:
+                  application/json: !Sub
+                    - |
+                      #set($inputRoot = $input.path('$'))
+                      {
+                        "TableName": "${tableName}",
+                        "ConditionExpression": "attribute_not_exists(TimeUTC) OR TimeUTC > :sk",
+                        "ExpressionAttributeValues": {
+                          ":sk":{
+                            "S": "$util.escapeJavaScript($input.path('$.time'))"
+                          }
+                        },
+                        "Item": $input.json('$.item'),
+                        "ReturnConsumedCapacity": "INDEXES",
+                        "ReturnItemCollectionMetrics": "SIZE"
+                      }
+                    - {
+                    tableName: !Ref EventsTable
+                    }
                 responses:
                   "2\\d{2}":
                     statusCode: "200"
